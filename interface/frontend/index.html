@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Produksi Sumur — Pipeline ML</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Pipeline forecasting oil &amp; water</h1>
+    <p class="sub">Unggah Excel → praproses → pilih sumur → fitur → split → latih → CV → optimasi choke</p>
+    <p class="session" id="sessionLabel"></p>
+  </header>
+
+  <main class="grid">
+    <section class="card" id="step-upload">
+      <div class="process-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>1. Unggah data</h2>
+      <input type="file" id="fileInput" accept=".xlsx" />
+      <button type="button" id="btnUpload">Unggah</button>
+      <div id="uploadSummary" class="muted"></div>
+    </section>
+
+    <section class="card" id="step-preprocess">
+      <div class="process-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>2. Praproses</h2>
+      <p class="muted small">Filter: BORE_OIL_VOL &gt; 0, FLOW_KIND = production, WELL_TYPE = OP</p>
+      <button type="button" id="btnPreprocess" disabled>Praproses</button>
+      <div id="preSummary" class="muted"></div>
+    </section>
+
+    <section class="card" id="step-well">
+      <div class="process-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>3. Pilih sumur</h2>
+      <select id="wellSelect" disabled></select>
+      <button type="button" id="btnSelectWell" disabled>Gunakan sumur ini</button>
+      <div id="wellSummary" class="muted"></div>
+    </section>
+
+    <section class="card" id="step-feature">
+      <div class="process-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>4. Fitur &amp; target</h2>
+      <button type="button" id="btnOpenFeatures" disabled>Pilih kolom fitur…</button>
+      <div id="featureSummary" class="muted"></div>
+    </section>
+
+    <section class="card" id="step-split">
+      <div class="process-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>5. Split dataset</h2>
+      <label>Test size (0–1) <input type="number" id="testSize" value="0.2" step="0.05" min="0.05" max="0.95" /></label>
+      <label>Random state <input type="number" id="randomState" value="42" /></label>
+      <button type="button" id="btnSplit" disabled>Split</button>
+      <div id="splitSummary" class="muted"></div>
+    </section>
+
+    <section class="card" id="step-train">
+      <div class="process-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>6. Model &amp; training</h2>
+      <label>Algoritma
+        <select id="algoSelect" disabled>
+          <option value="">— pilih —</option>
+          <option value="decisiontree">Decision Tree</option>
+          <option value="randomforest">Random Forest</option>
+          <option value="extratrees">Extra Trees</option>
+          <option value="gradientboosting">Gradient Boosting</option>
+          <option value="xgboost">XGBoost</option>
+          <option value="lightgbm">LightGBM</option>
+          <option value="ridgeregressor">Ridge</option>
+          <option value="lassoregressor">Lasso</option>
+          <option value="sgd">SGD</option>
+          <option value="svm">SVM</option>
+        </select>
+      </label>
+      <button type="button" id="btnTrain" disabled>Training (oil + water)</button>
+      <div id="trainSummary" class="muted"></div>
+    </section>
+
+    <section class="card wide" id="step-cv">
+      <div class="process-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>7. Cross-validation (R²)</h2>
+      <label>Jumlah lipatan (cv) <input type="number" id="cvFolds" value="5" min="2" max="20" /></label>
+      <button type="button" id="btnCv" disabled>Jalankan / perbarui CV</button>
+      <div class="cv-grid">
+        <div>
+          <h3>Oil</h3>
+          <pre id="cvOil" class="cv-out"></pre>
+        </div>
+        <div>
+          <h3>Water</h3>
+          <pre id="cvWater" class="cv-out"></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="card wide" id="step-optimize">
+      <div class="process-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>8. Optimasi choke</h2>
+      <label>Jumlah hari (maks. baris yang dipakai) <input type="number" id="nDays" value="30" min="1" max="5000" /></label>
+      <p class="muted small" id="optDateHint">Lakukan split dataset dulu agar rentang tanggal test set tersedia.</p>
+      <div class="row-dates">
+        <label>Tanggal mulai (opsional)
+          <input type="date" id="optDateStart" disabled />
+        </label>
+        <label>Tanggal akhir (opsional)
+          <input type="date" id="optDateEnd" disabled />
+        </label>
+      </div>
+      <p class="muted small">Setelah menentukan jumlah hari: kosongkan kedua tanggal untuk memakai urutan awal baris test (seperti notebook). Isi keduanya untuk memfilter menurut <strong>DATEPRD</strong>, mengurutkan naik, lalu mengambil paling banyak sejumlah hari tersebut.</p>
+      <label>Metode scipy.minimize
+        <select id="optMethod">
+          <option value="SLSQP">SLSQP</option>
+          <option value="Powell">Powell</option>
+          <option value="COBYLA">COBYLA</option>
+          <option value="Nelder-Mead">Nelder-Mead</option>
+          <option value="BFGS">BFGS (→ L-BFGS-B)</option>
+          <option value="L-BFGS-B">L-BFGS-B</option>
+          <option value="TNC">TNC</option>
+          <option value="trust-constr">trust-constr</option>
+        </select>
+      </label>
+      <button type="button" id="btnOptimize" disabled>Jalankan optimasi</button>
+      <div id="optSummary" class="muted"></div>
+    </section>
+
+    <section class="card wide charts">
+      <h2>9. Visualisasi time series</h2>
+      <p class="muted small">Oil &amp; water: aktual vs prediksi pada choke optimal. Choke: aktual vs rekomendasi (% jika choke 0–1).</p>
+      <div class="chart-box"><canvas id="chartOil"></canvas></div>
+      <div class="chart-box"><canvas id="chartWater"></canvas></div>
+      <div class="chart-box"><canvas id="chartChoke"></canvas></div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-inner" id="modalInner">
+      <div class="process-loading modal-loading" aria-live="polite">
+        <div class="process-loading-track"><div class="process-loading-bar"></div></div>
+        <p class="process-loading-text"></p>
+      </div>
+      <h2>Pilih kolom</h2>
+      <p class="muted small">Centang fitur (wajib sertakan <strong>AVG Choke size</strong> untuk optimasi). Pilih target oil &amp; water.</p>
+      <div id="featureChecks" class="checks"></div>
+      <div class="row">
+        <label>Target oil <select id="targetOil"></select></label>
+        <label>Target water <select id="targetWater"></select></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btnModalCancel">Batal</button>
+        <button type="button" id="btnModalSave">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="js/app.js"></script>
+</body>
+</html>
